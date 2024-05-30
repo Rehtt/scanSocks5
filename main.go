@@ -12,50 +12,35 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lionsoul2014/ip2region/binding/golang/xdb"
 )
 
+var Version string = "0.1.0"
+
 var (
-	pipe     = flag.Bool("pipeline", false, "use linux pipeline")
-	limit    = flag.Int("limit", 5, "thread limit")
-	ports    []string
-	portsStr = flag.String("ports", "7890,7891,7892,7893,10810", "ports")
+	infile      = flag.String("i", "./ip.txt", "ip file, input `-` linux pipeline will be used")
+	usePipeline bool
+	limit       = flag.Int("limit", 5, "thread limit")
+	ports       []string
+	portsStr    = flag.String("ports", "7890,7891,7892,7893,10810", "ports")
 
 	region             = flag.String("region", "", "filter region")
 	regionSeracher     *xdb.Searcher
 	regionSeracherInit sync.Once
 	regionDBPath       = flag.String("region_db_path", "./ip2region.xdb", "region db path")
+
+	count atomic.Int32
+
+	q   = flag.Bool("q", false, "quiet log")
+	log *slog.Logger
 )
-
-type Thread struct {
-	c  chan struct{}
-	wg sync.WaitGroup
-}
-
-func NewThread(limit int) *Thread {
-	return &Thread{
-		c: make(chan struct{}, limit),
-	}
-}
-
-func (t *Thread) Run(f func(map[string]any), arg map[string]any) {
-	t.c <- struct{}{}
-	t.wg.Add(1)
-	go func(t *Thread, f func(arg map[string]any), arg map[string]any) {
-		f(arg)
-		<-t.c
-		t.wg.Done()
-	}(t, f, arg)
-}
-
-func (t *Thread) Wait() {
-	t.wg.Wait()
-}
 
 func main() {
 	flag.Parse()
+
 	for _, v := range strings.Split(*portsStr, ",") {
 		v = strings.TrimSpace(v)
 		if v == "" {
@@ -66,45 +51,45 @@ func main() {
 			ports = append(ports, v)
 		}
 	}
-	slog.Info("config", "thread limit", *limit, "pipeline", *pipe, "ports", ports, "filter region", *region)
 
-	if *pipe {
-		pipeHandle()
-		return
+	if *q {
+		log = newLogger(slog.LevelError)
+	} else {
+		log = newLogger(slog.LevelInfo)
 	}
-	fileHandle()
-}
 
-func fileHandle() {
-	ipRaw, err := os.ReadFile("ip.txt")
-	if err != nil {
-		slog.Error("open file", "err", err)
-		return
+	inputFile := *infile
+	usePipeline = *infile == "-"
+	if usePipeline {
+		inputFile = "pipeline"
 	}
-	ips := strings.Split(string(ipRaw), "\n")
-	slog.Info("ips", "len", len(ips))
+
+	log.Info("info", "version", Version, "home page", "https://github.com/Rehtt/scanSocks5")
+	log.Info("config", "thread limit", *limit, "input file", inputFile, "ports", ports, "filter region", *region)
+
+	var rawData io.Reader
+	if usePipeline {
+		rawData = os.Stdin
+	} else {
+		f, err := os.Open(*infile)
+		if err != nil {
+			log.Error("open file", "err", err)
+			return
+		}
+		defer f.Close()
+		rawData = f
+	}
 	thread := NewThread(*limit)
-	for _, ip := range ips {
-		ip = strings.TrimSpace(ip)
+	buf := bufio.NewScanner(rawData)
+	for buf.Scan() {
+		ip := strings.TrimSpace(buf.Text())
 		if ip == "" {
 			continue
 		}
 		handleScan(thread, ip)
 	}
 	thread.Wait()
-}
-
-func pipeHandle() {
-	buf := bufio.NewScanner(os.Stdin)
-	thread := NewThread(*limit)
-	for buf.Scan() {
-		txt := strings.TrimSpace(buf.Text())
-		if txt == "" {
-			continue
-		}
-		handleScan(thread, txt)
-	}
-	thread.Wait()
+	slog.Info("done", "count", count.Load())
 }
 
 func handleScan(t *Thread, ip string) {
@@ -121,6 +106,7 @@ func handleScan(t *Thread, ip string) {
 			port := arg["port"].(string)
 			if scan(ip, port) {
 				fmt.Println(ip, port, r)
+				count.Add(1)
 			}
 		}, map[string]any{
 			"ip":   ip,
@@ -150,16 +136,16 @@ func ipRegion(ip string) (string, error) {
 	regionSeracherInit.Do(func() {
 		_, err := os.Stat(*regionDBPath)
 		if os.IsNotExist(err) {
-			slog.Info("download ip2region")
+			log.Info("download ip2region")
 			response, err := http.Get("https://github.com/zoujingli/ip2region/raw/master/ip2region.xdb")
 			if err != nil {
-				slog.Error("regionSeracherInit download xdb", "err", err)
+				log.Error("regionSeracherInit download xdb", "err", err)
 				return
 			}
 			defer response.Body.Close()
 			f, err := os.OpenFile(*regionDBPath, os.O_WRONLY|os.O_CREATE, 0644)
 			if err != nil {
-				slog.Error("regionSeracherInit write", "err", err)
+				log.Error("regionSeracherInit write", "err", err)
 				return
 			}
 			defer f.Close()
@@ -167,13 +153,13 @@ func ipRegion(ip string) (string, error) {
 		}
 		regionSeracher, err = xdb.NewWithFileOnly(*regionDBPath)
 		if err != nil {
-			slog.Error("regionSeracherInit NewWithFileOnly", "err", err)
+			log.Error("regionSeracherInit NewWithFileOnly", "err", err)
 			return
 		}
 	})
 	region, err := regionSeracher.SearchByStr(ip)
 	if err != nil {
-		slog.Error("ipRegion SearchByStr", "err", err)
+		log.Error("ipRegion SearchByStr", "err", err)
 		return "", err
 	}
 	return region, nil
