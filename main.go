@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var Version string = "0.1.1"
+var Version string = "0.1.2"
 
 var (
 	infile  = flag.String("i", "./ip.txt", "ip file, input - linux pipeline will be used")
