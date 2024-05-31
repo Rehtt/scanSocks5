@@ -9,7 +9,7 @@ go install github.com/Rehtt/scanSocks5@latest
 ```
 or
 ```shell
-git clone github.com/Rehtt/scanSocks5
+git clone https://github.com/Rehtt/scanSocks5
 cd scanSocks5
 go install
 ```
