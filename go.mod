@@ -1,4 +1,4 @@
-module scanSocks5
+module github.com/Rehtt/scanSocks5
 
 go 1.21.5
 
