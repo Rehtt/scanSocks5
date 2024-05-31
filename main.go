@@ -18,10 +18,10 @@ import (
 	"github.com/lionsoul2014/ip2region/binding/golang/xdb"
 )
 
-var Version string = "0.1.0"
+var Version string = "0.1.1"
 
 var (
-	infile      = flag.String("i", "./ip.txt", "ip file, input `-` linux pipeline will be used")
+	infile      = flag.String("i", "./ip.txt", "ip file, input - linux pipeline will be used")
 	usePipeline bool
 	limit       = flag.Int("limit", 5, "thread limit")
 	ports       []string
