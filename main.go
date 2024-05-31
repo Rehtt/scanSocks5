@@ -30,6 +30,9 @@ var (
 	excludeRegion = flag.String("exclude_region", "", "exclude region")
 	regionDBPath  = flag.String("region_db_path", "./ip2region.xdb", "region db path")
 
+	connectTimeout  = flag.Int("connect_timeout", 2, "ip connect timeout")
+	connectDeadline = flag.Int("connect_deadline", 1, "connect read write timeout")
+
 	count atomic.Int32
 
 	q   = flag.Bool("q", false, "quiet log")
@@ -127,11 +130,11 @@ func handleScan(t *Thread, ip string) {
 
 func scan(ip, port string) bool {
 	addr := ip + ":" + port
-	n, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	n, err := net.DialTimeout("tcp", addr, time.Second*time.Duration(*connectTimeout))
 	if err != nil {
 		return false
 	}
-	n.SetDeadline(time.Now().Add(1 * time.Second))
+	n.SetDeadline(time.Now().Add(time.Second * time.Duration(*connectDeadline)))
 	defer n.Close()
 	n.Write([]byte("\x05\x01\x00"))
 	tmp := make([]byte, 2)
