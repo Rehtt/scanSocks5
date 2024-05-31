@@ -26,8 +26,9 @@ var (
 	ports    []string
 	portsStr = flag.String("ports", "7890,7891,7892,7893,10810", "ports")
 
-	region       = flag.String("region", "", "filter region")
-	regionDBPath = flag.String("region_db_path", "./ip2region.xdb", "region db path")
+	region        = flag.String("region", "", "filter region")
+	excludeRegion = flag.String("exclude_region", "", "exclude region")
+	regionDBPath  = flag.String("region_db_path", "./ip2region.xdb", "region db path")
 
 	count atomic.Int32
 
@@ -104,6 +105,9 @@ func handleScan(t *Thread, ip string) {
 		panic(err)
 	}
 	if !strings.Contains(r, *region) {
+		return
+	}
+	if *excludeRegion != "" && strings.Contains(r, *excludeRegion) {
 		return
 	}
 	for _, port := range ports {
